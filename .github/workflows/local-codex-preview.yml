@@ -1,0 +1,48 @@
+name: Local Codex preview
+
+on:
+  push:
+    branches: [build/local-codex-preview]
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            windows/target
+          key: local-codex-preview-${{ runner.os }}-${{ hashFiles('windows/Cargo.lock') }}
+      - run: npm ci
+      - name: Build portable preview with embedded frontend
+        run: npm run tauri -- build --debug --no-bundle
+      - name: Record source and checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path preview -Force | Out-Null
+          Copy-Item -LiteralPath target/debug/coucou.exe -Destination preview/coucou.exe
+          Copy-Item -LiteralPath target/release/coucou-hook.exe -Destination preview/coucou-hook.exe
+          @('Coucou local Codex preview', 'PR: https://github.com/Louis-CFM/coucou/pull/864', 'Application source: 059df3afbf477328e56b9b9c20968fad0e16c532', 'Build commit: ${{ github.sha }}') | Set-Content preview/SOURCE.txt
+          Get-FileHash preview/coucou.exe, preview/coucou-hook.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([System.IO.Path]::GetFileName($_.Path))" } | Set-Content preview/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Coucou-Codex-local-preview
+          path: windows/preview/
+          retention-days: 3
